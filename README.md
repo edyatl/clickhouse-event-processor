@@ -39,9 +39,9 @@ The program is divided into two main classes:
 
 Run the script using the following command:
 
-	```bash
-	python clickhouse_event_checker.py
-	```
+   ```bash
+   python clickhouse_event_checker.py
+   ```
 
 ## Configuration
 Update the config.py file with your ClickHouse connection details, base URL for GET requests, and other configurations in the .env file.
