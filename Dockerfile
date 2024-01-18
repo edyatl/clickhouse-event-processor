@@ -9,5 +9,5 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 RUN crontab -l | \
-  { cat; echo "*/3 * * * * /usr/local/bin/python3 /var/app/clickhouse_event_checker.py"; } | crontab -
+  { cat; echo "0 * * * * /usr/local/bin/python3 /var/app/clickhouse_event_checker.py"; } | crontab -
 CMD cron && tail -f /var/app/clickhouse_event_monitor.log

@@ -14,7 +14,7 @@ if os.path.exists(project_dotenv):
     load_dotenv(project_dotenv)
 
 class Configuration(object):
-    DEBUG = True
+    DEBUG = False
 
     # DWH Credentials
     CLICKHOUSE_HOST = env.get('ENV_CLICKHOUSE_HOST')

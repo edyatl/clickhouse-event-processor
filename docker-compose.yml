@@ -1,6 +1,6 @@
 version: '3.9'
 services:
-  clickhouse_event_checker:
+  chprocessor:
     volumes:
       - './:/var/app'
     build: .
