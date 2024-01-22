@@ -6,15 +6,17 @@
 """
 
 import os
+import time
 import logging
 import json
 import requests
 import pandas as pd
 
 import clickhouse_connect
+
 from config import Configuration as cfg
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 def get_cls_logger(cls: str) -> object:
@@ -39,6 +41,8 @@ def get_cls_logger(cls: str) -> object:
 
 
 class ClickHouseConnector:
+    """Class to connect ClickHouse DWH and fetch events."""
+
     logger = get_cls_logger(__qualname__)
     json_file_path = cfg.JSON_FILE
 
@@ -70,7 +74,7 @@ class ClickHouseConnector:
         # Check if the JSON file exists
         if os.path.exists(self.json_file_path):
             # Read the existing JSON file
-            with open(self.json_file_path, "r") as file:
+            with open(self.json_file_path, "r", encoding="utf-8") as file:
                 stored_values = json.load(file)
                 self.prev_rows_number = stored_values.get("prev_rows_number", 0)
         else:
@@ -78,21 +82,29 @@ class ClickHouseConnector:
         self.logger.debug("Make an instance of %s class", self.__class__.__name__)
 
     def __del__(self):
+        """
+        Destructor func, closes connection.
+        """
         self.client.close()
 
     def fetch_new_events(self) -> pd.DataFrame:
+        """
+        Fetches new events from ClickHouse DWH.
+        """
         cnt = int(self.client.command(self.query_cnt))
         dev = cnt - self.prev_rows_number
         if dev == 0:
             return pd.DataFrame()
         parameters = {"dev": dev}
         result = self.client.query(self.query_str, parameters=parameters)
-        with open(self.json_file_path, "w") as file:
+        with open(self.json_file_path, "w", encoding="utf-8") as file:
             json.dump({"prev_rows_number": cnt}, file)
         return pd.DataFrame(result.result_rows, columns=result.column_names)
 
 
 class EventProcessor:
+    """Class for processing events."""
+
     BASE_URL = cfg.BASE_URL
     logger = get_cls_logger(__qualname__)
 
@@ -106,9 +118,7 @@ class EventProcessor:
         self.activation = self.events_df[self.events_df["event_name"] == "af_subscribe"]
         self.logger.debug("Make an instance of %s class", self.__class__.__name__)
 
-    def requests_call(
-        self, verb: str, url: str, params=None, void=False, **kwargs
-    ) -> tuple:
+    def requests_call(self, verb: str, url: str, params=None, **kwargs) -> tuple:
         """
         Wraping func for requests with errors handling.
 
@@ -123,8 +133,8 @@ class EventProcessor:
         """
         r: object = None
         error: str = None
-        retries: int = 10
-        delay: int = 6
+        retries: int = cfg.RETRIES  # default 10
+        delay: int = cfg.DELAY  # default 6
 
         for retry in range(retries):
             try:
@@ -175,6 +185,9 @@ class EventProcessor:
         return r, error
 
     def install_requests(self):
+        """
+        Send requests for install events.
+        """
         if self.install.shape[0] == 0:
             return
         url = self.BASE_URL
@@ -187,6 +200,9 @@ class EventProcessor:
             response, error = self.requests_call("GET", url=url, params=params)
 
     def trial_requests(self):
+        """
+        Send requests for trial events.
+        """
         if self.trial.shape[0] == 0:
             return
         url = self.BASE_URL
@@ -199,6 +215,9 @@ class EventProcessor:
             response, error = self.requests_call("GET", url=url, params=params)
 
     def activation_requests(self):
+        """
+        Send requests for activation events.
+        """
         if self.activation.shape[0] == 0:
             return
         url = self.BASE_URL
