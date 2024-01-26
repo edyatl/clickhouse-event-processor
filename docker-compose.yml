@@ -1,6 +1,7 @@
 version: '3.9'
 services:
   chprocessor:
+    restart: on-failure
     volumes:
       - './:/var/app'
     build: .
