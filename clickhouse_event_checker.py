@@ -46,7 +46,7 @@ class ClickHouseConnector:
     """Class to connect ClickHouse DWH and fetch events."""
 
     logger = get_cls_logger(__qualname__)
-    json_file_path = os.path.join(os.path.abspath(""), "var_storage.json")
+    json_file_path = cfg.JSON_FILE
 
     def __init__(self, **kwargs):
         """
@@ -132,7 +132,7 @@ class EventProcessor:
                 db.execute("SELECT id FROM cachetab")
             except sql.OperationalError:
                 self.logger.debug("Sqlite db not exists, creating it from schema")
-                db.executescript(open("db/schema.sql", "rt", encoding="utf-8").read())
+                db.executescript(open(cfg.SCHEMA_FILE, "rt", encoding="utf-8").read())
 
     def requests_call(self, verb: str, url: str, params=None, **kwargs) -> tuple:
         """
@@ -154,7 +154,7 @@ class EventProcessor:
 
         for retry in range(retries):
             try:
-                self.logger.info("Try %s request %s", verb, url)
+                self.logger.debug("Try %s request %s", verb, url)
                 r = requests.request(verb, url, params=params)
                 r.raise_for_status()
                 self.logger.info(
@@ -164,7 +164,7 @@ class EventProcessor:
             except requests.exceptions.HTTPError as errh:
                 self.logger.error("Http Error: %s", errh)
                 error = errh
-                self.logger.info(
+                self.logger.debug(
                     "Don't give up! Trying to reconnect, retry %s of %s",
                     retry + 1,
                     retries,
@@ -173,7 +173,7 @@ class EventProcessor:
             except requests.exceptions.ConnectionError as errc:
                 self.logger.error("Connection Error: %s", errc)
                 error = errc
-                self.logger.info(
+                self.logger.debug(
                     "Don't give up! Trying to reconnect, retry %s of %s",
                     retry + 1,
                     retries,
@@ -182,7 +182,7 @@ class EventProcessor:
             except requests.exceptions.Timeout as errt:
                 self.logger.error("Timeout Error: %s", errt)
                 error = errt
-                self.logger.info(
+                self.logger.debug(
                     "Don't give up! Trying to reconnect, retry %s of %s",
                     retry + 1,
                     retries,
@@ -191,7 +191,7 @@ class EventProcessor:
             except requests.exceptions.RequestException as err:
                 self.logger.error("OOps: Unexpected Error: %s", err)
                 error = err
-                self.logger.info(
+                self.logger.debug(
                     "Don't give up! Trying to reconnect, retry %s of %s",
                     retry + 1,
                     retries,
