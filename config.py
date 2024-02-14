@@ -14,7 +14,7 @@ if os.path.exists(project_dotenv):
     load_dotenv(project_dotenv)
 
 class Configuration(object):
-    DEBUG = True
+    DEBUG = False
     RETRIES = 10 
     DELAY = 6
 
