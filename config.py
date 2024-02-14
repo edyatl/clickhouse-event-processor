@@ -29,4 +29,6 @@ class Configuration(object):
 
     LOG_FILE = os.path.join(os.path.dirname(__file__), "clickhouse_event_monitor.log")
     JSON_FILE = os.path.join(os.path.dirname(__file__), "var_storage.json")
+    DB_FILE = os.path.join(os.path.dirname(__file__), "db/cache.db")
+    SCHEMA_FILE = os.path.join(os.path.dirname(__file__), "db/schema.sql")
 

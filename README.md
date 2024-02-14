@@ -18,6 +18,9 @@ The program is divided into two main classes:
    - Distributes events into different categories: Install, Trial, Activation.
    - Executes GET requests based on the event types.
 
+
+**Update 2024-02-14:** when the *af_start_trial* event arrives, we wait 1 hour from *event_time* and if a new *trial_renewal_cancelled* event arrives for the same id (af_sub1), then we do nothing, and if it doesn’t arrive, then we send a get request as usual.
+
 ## Files description
 
 ```
@@ -26,11 +29,15 @@ The program is divided into two main classes:
 ├── clickhouse_event_checker.py
 ├── clickhouse_event_monitor.log
 ├── config.py
+├── db
+│   ├── cache.db
+│   └── schema.sql
 ├── docker-compose.yml
 ├── Dockerfile
 ├── full_notebook_requirements.txt
 ├── requirements.txt
 └── var_storage.json
+
 ```
 [clickhouse_event_checker.ipynb](./clickhouse_event_checker.ipynb) - Jupyter Notebook explaining the main parts of the program.
 
@@ -39,6 +46,10 @@ The program is divided into two main classes:
 *clickhouse_event_monitor.log* - Log file with all program general events. It creates automatically when the program runs.
 
 [config.py](./config.py) - Basic configuration. Credentials takes from environment vars.
+
+[schema.sql](./db/schema.sql) - SQL dump of table schema. One table used at the moment.
+
+*binom.db* - Sqlite DB file with one table. It creates automatically from schema.sql if it doesn't exist when the program runs. 
 
 [docker-compose.yml](./docker-compose.yml) - Composer file for deployment with Docker. Sets current app host directory as container work directory.
 
