@@ -157,7 +157,7 @@ class EventProcessor:
                 self.logger.debug("Try %s request %s", verb, url)
                 r = requests.request(verb, url, params=params)
                 r.raise_for_status()
-                self.logger.info(
+                self.logger.debug(
                     "Get answer with status code: %s %s", r.status_code, r.reason
                 )
                 return r, error
