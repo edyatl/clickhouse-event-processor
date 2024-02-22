@@ -356,6 +356,21 @@ class EventProcessor:
             ]
             response, error = self.requests_call("GET", url=url, params=params)
 
+    def cancel_trial_requests(self):
+        """
+        Send requests for cancelled trial events.
+        """
+        if self.trial_cancelled.shape[0] == 0:
+            return
+        url = self.BASE_URL
+        for af_sub1 in self.trial_cancelled['af_sub1']:
+            params = [
+                ["cnv_id", af_sub1],
+                ["cnv_status", "trial_renewal_cancelled"],
+                ["event6", 1],
+            ]
+            response, error = self.requests_call('GET', url=url, params=params)
+
 
 def main():
     dwh = ClickHouseConnector(
@@ -374,6 +389,7 @@ def main():
 
         evs.install_requests()
         evs.activation_requests()
+        evs.cancel_trial_requests()
 
         evs.process_new_trials()
         evs.process_cancelled_trials()

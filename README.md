@@ -21,6 +21,8 @@ The program is divided into two main classes:
 
 **Update 2024-02-14:** when the *af_start_trial* event arrives, we wait 1 hour from *event_time* and if a new *trial_renewal_cancelled* event arrives for the same id (af_sub1), then we do nothing, and if it doesn’t arrive, then we send a get request as usual.
 
+**Update 2024-02-22:** Added GET requests for *trial_renewal_cancelled* event.
+
 ## Files description
 
 ```
