@@ -62,12 +62,12 @@ class ClickHouseConnector:
         )
 
         self.query_cnt = """SELECT count()
-            FROM analytics.appsflyer_export 
+            FROM analytics.appsflyer_export FINAL
             WHERE media_source = 'Popunder'
             AND event_name IN ('install', 'af_start_trial', 'af_subscribe', 'trial_renewal_cancelled')"""
 
         self.query_str = """SELECT event_time,event_name,af_sub1
-            FROM analytics.appsflyer_export 
+            FROM analytics.appsflyer_export FINAL
             WHERE media_source = 'Popunder'
             AND event_name IN ('install', 'af_start_trial', 'af_subscribe', 'trial_renewal_cancelled')
             ORDER BY event_time DESC
