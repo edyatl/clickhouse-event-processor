@@ -389,11 +389,12 @@ def main():
 
         evs.install_requests()
         evs.activation_requests()
+        evs.trial_requests()
         evs.cancel_trial_requests()
 
-        evs.process_new_trials()
-        evs.process_cancelled_trials()
-        evs.confirmed_trial_requests()
+        # evs.process_new_trials()
+        # evs.process_cancelled_trials()
+        # evs.confirmed_trial_requests()
 
 
 if __name__ == "__main__":
