@@ -363,13 +363,13 @@ class EventProcessor:
         if self.trial_cancelled.shape[0] == 0:
             return
         url = self.BASE_URL
-        for af_sub1 in self.trial_cancelled['af_sub1']:
+        for af_sub1 in self.trial_cancelled["af_sub1"]:
             params = [
                 ["cnv_id", af_sub1],
                 ["cnv_status", "trial_renewal_cancelled"],
                 ["event6", 1],
             ]
-            response, error = self.requests_call('GET', url=url, params=params)
+            response, error = self.requests_call("GET", url=url, params=params)
 
 
 def main():
