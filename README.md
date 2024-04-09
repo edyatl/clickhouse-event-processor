@@ -18,6 +18,12 @@ The program is divided into two main classes:
    - Distributes events into different categories: Install, Trial, Activation.
    - Executes GET requests based on the event types.
 
+**Update 2024-04-09:**
+
+- Implemented bypass of cancelled trials processing to ensure accurate event tracking.
+- Added functionality to set the secret path of the base URL in the configuration settings for enhanced security.
+- Introduced the `FINAL` instruction into SQL queries within the `FROM` section to retrieve ClickHouse rows without duplicates, optimizing data retrieval.
+- These updates enhance the reliability, security, and performance of the clickhouse_event_checker tool.
 
 **Update 2024-02-14:** when the *af_start_trial* event arrives, we wait 1 hour from *event_time* and if a new *trial_renewal_cancelled* event arrives for the same id (af_sub1), then we do nothing, and if it doesn’t arrive, then we send a get request as usual.
 
@@ -90,7 +96,9 @@ The program is divided into two main classes:
     ```bash
     $ for src in $(echo 'HOST USER PASS PORT'); do \
     read -p "type ${src} value:" tkn \
-    && echo "export ENV_CLICKHOUSE_${src}='${tkn}'"; done > .env
+    && echo "export ENV_CLICKHOUSE_${src}='${tkn}'"; done > .env \
+    && read -p "type URL secret path part:" tkn \
+    && echo "export ENV_URL_SECRET='${tkn}'" >> .env
     ```
 
    Check resulted env file:
