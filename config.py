@@ -25,7 +25,8 @@ class Configuration(object):
     CLICKHOUSE_PORT = env.get('ENV_CLICKHOUSE_PORT')
 
     # URLs
-    BASE_URL = "https://maintracking.net/cikpl9k.php"
+    URL_SECRET = env.get('ENV_URL_SECRET')
+    BASE_URL = "https://maintracking.net/" + URL_SECRET + ".php"
 
     LOG_FILE = os.path.join(os.path.dirname(__file__), "clickhouse_event_monitor.log")
     JSON_FILE = os.path.join(os.path.dirname(__file__), "var_storage.json")
