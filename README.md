@@ -18,16 +18,18 @@ The program is divided into two main classes:
    - Distributes events into different categories: Install, Trial, Activation.
    - Executes GET requests based on the event types.
 
-**Update 2024-04-09:**
+## Changelog
 
-- Implemented bypass of cancelled trials processing to ensure accurate event tracking.
-- Added functionality to set the secret path of the base URL in the configuration settings for enhanced security.
-- Introduced the `FINAL` instruction into SQL queries within the `FROM` section to retrieve ClickHouse rows without duplicates, optimizing data retrieval.
-- These updates enhance the reliability, security, and performance of the clickhouse_event_checker tool.
+- **2024-04-09:**
+  - Implemented bypass of cancelled trials processing to ensure accurate event tracking.
+  - Added functionality to set the secret path of the base URL in the configuration settings for enhanced security.
+  - Introduced the `FINAL` instruction into SQL queries within the `FROM` section to retrieve ClickHouse rows without duplicates, optimizing data retrieval.
 
-**Update 2024-02-14:** when the *af_start_trial* event arrives, we wait 1 hour from *event_time* and if a new *trial_renewal_cancelled* event arrives for the same id (af_sub1), then we do nothing, and if it doesn’t arrive, then we send a get request as usual.
+- **2024-02-22:** 
+  - Added GET requests for *trial_renewal_cancelled* event.
 
-**Update 2024-02-22:** Added GET requests for *trial_renewal_cancelled* event.
+- **2024-02-14:** 
+  - Modified handling of *af_start_trial* event: now waits 1 hour from *event_time* and checks if a new *trial_renewal_cancelled* event arrives for the same id (af_sub1). If it arrives, no action is taken; otherwise, a GET request is sent as usual.
 
 ## Files description
 
