@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
     Developed by @edyatl <edyatl@yandex.ru> January 2024
     https://github.com/edyatl
@@ -7,7 +8,7 @@
 
 import os
 import time
-import datetime
+from datetime import datetime, timedelta
 import logging
 import json
 import sqlite3 as sql
@@ -17,30 +18,9 @@ import pandas as pd
 import clickhouse_connect
 
 from config import Configuration as cfg
+from logger import get_cls_logger
 
-__version__ = "0.2.0"
-
-
-def get_cls_logger(cls: str) -> object:
-    """
-    Logger config. Sets handler to a file, formater and logging level.
-
-    :param cls:
-        str Name of class where logger calling.
-    :return:
-        Returns Logger instans.
-    """
-    logger = logging.getLogger(cls)
-    if not logger.handlers:
-        handler = logging.FileHandler(cfg.LOG_FILE)
-        formatter = logging.Formatter(
-            "%(asctime)s %(name)-16s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG if cfg.DEBUG else logging.INFO)
-    return logger
-
+__version__ = "0.3.0"
 
 class ClickHouseConnector:
     """Class to connect ClickHouse DWH and fetch events."""
@@ -61,26 +41,23 @@ class ClickHouseConnector:
             host=self.host, user=self.user, password=self.password, port=self.port
         )
 
-        self.query_cnt = """SELECT count()
+        self.query_str = """SELECT created, event_time, event_name, af_sub1
             FROM analytics.appsflyer_export FINAL
-            WHERE media_source = 'Popunder'
-            AND event_name IN ('install', 'af_start_trial', 'af_subscribe', 'trial_renewal_cancelled')"""
-
-        self.query_str = """SELECT event_time,event_name,af_sub1
-            FROM analytics.appsflyer_export FINAL
-            WHERE media_source = 'Popunder'
-            AND event_name IN ('install', 'af_start_trial', 'af_subscribe', 'trial_renewal_cancelled')
-            ORDER BY event_time DESC
-            LIMIT {dev:int}"""
+            WHERE media_source = 'Popunder' 
+                AND created > {prev_last_created:datetime}
+                AND event_name IN ('install', 'af_start_trial', 'af_subscribe', 'trial_renewal_cancelled')
+            ORDER BY event_time DESC"""
 
         # Check if the JSON file exists
         if os.path.exists(self.json_file_path):
             # Read the existing JSON file
             with open(self.json_file_path, "r", encoding="utf-8") as file:
                 stored_values = json.load(file)
-                self.prev_rows_number = stored_values.get("prev_rows_number", 0)
+                self.prev_last_created = datetime.fromisoformat(
+                    stored_values.get("prev_last_created", 0)
+                )
         else:
-            self.prev_rows_number = 0
+            self.prev_last_created = datetime.now() - timedelta(weeks=1)
         self.logger.debug("Make an instance of %s class", self.__class__.__name__)
 
     def __del__(self):
@@ -93,15 +70,14 @@ class ClickHouseConnector:
         """
         Fetches new events from ClickHouse DWH.
         """
-        cnt = int(self.client.command(self.query_cnt))
-        dev = cnt - self.prev_rows_number
-        if dev == 0:
-            return pd.DataFrame()
-        parameters = {"dev": dev}
+        parameters = {"prev_last_created": self.prev_last_created}
         result = self.client.query(self.query_str, parameters=parameters)
+        df = pd.DataFrame(result.result_rows, columns=result.column_names)
+        if df.empty:
+            return pd.DataFrame()
         with open(self.json_file_path, "w", encoding="utf-8") as file:
-            json.dump({"prev_rows_number": cnt}, file)
-        return pd.DataFrame(result.result_rows, columns=result.column_names)
+            json.dump({"prev_last_created": str(df["created"].max())}, file)
+        return df
 
 
 class EventProcessor:
@@ -208,7 +184,7 @@ class EventProcessor:
         Save events to cache db.
         """
         payload = {
-            "date": datetime.datetime.now(),
+            "date": datetime.now(),
             "event_time": event_time,
             "event_name": event_name,
             "af_sub1": af_sub1,
