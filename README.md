@@ -15,10 +15,17 @@ The program is divided into two main classes:
 
 2. **EventProcessor:**
    - Processes the events obtained from ClickHouse.
-   - Distributes events into different categories: Install, Trial, Activation.
+   - Distributes events into different categories: Install, Trial, Cancelled Trial, Activation.
    - Executes GET requests based on the event types.
 
 ## Changelog
+
+- **2024-04-16:**
+  - Designed the system to handle incoming events in batches of about 1000 items, ensuring efficient processing and scalability.
+  - Implemented logic to handle partially duplicate events within each batch, ensuring that only new events not present in previous batches are processed further.
+  - Developed a filtering mechanism to identify and extract only the new events from each batch, improving data integrity and reducing redundancy.
+  - Integrated functionality to transmit the filtered events further using GET requests, ensuring seamless communication with external systems.
+  - Canceled trials handling functionality has been permanently removed.
 
 - **2024-04-09:**
   - Implemented bypass of cancelled trials processing to ensure accurate event tracking.
@@ -59,24 +66,24 @@ The program is divided into two main classes:
 
 [schema.sql](./db/schema.sql) - SQL dump of table schema. One table used at the moment.
 
-*binom.db* - Sqlite DB file with one table. It creates automatically from schema.sql if it doesn't exist when the program runs. 
+*cache.db* - Sqlite DB file with one table. It creates automatically from schema.sql if it doesn't exist when the program runs. 
 
 [docker-compose.yml](./docker-compose.yml) - Composer file for deployment with Docker. Sets current app host directory as container work directory.
 
-[Dockerfile](./Dockerfile) - For deployment with Docker Python image. By default it sets hourly cron schedule task.
+[Dockerfile](./Dockerfile) - For deployment with Docker Python image. By default it sets a task scheduled to run every 10 minutes.
 
 **Default cron table set list:**
 
 ```
 # crontab -l
-0 * * * * /usr/local/bin/python3 /var/app/clickhouse_event_checker.py
+*/10 * * * * /usr/local/bin/python3 /var/app/clickhouse_event_checker.py
 ```
 
 [full_notebook_requirements.txt](./full_notebook_requirements.txt) - Additional list of packages for Python3 environment for Jupyter Notebook.
 
 [requirements.txt](./requirements.txt) - List of packages for Python3 environment to run main program file only.
 
-*var_storage.json* - JSON file to store the previous state. It creates automatically when the program runs.
+*var_storage.json* - JSON file to store the previous last created date. It creates automatically when the program runs.
 
 ## Installation
 
@@ -134,7 +141,7 @@ The program is divided into two main classes:
 
 ## Usage
 
-Run the script using the following command:
+Run the script directly using the following command:
 
    ```bash
    $ python clickhouse_event_checker.py
