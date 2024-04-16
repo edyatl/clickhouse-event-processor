@@ -9,7 +9,6 @@
 import os
 import time
 from datetime import datetime, timedelta
-import logging
 import json
 import sqlite3 as sql
 import requests
@@ -21,6 +20,7 @@ from config import Configuration as cfg
 from logger import get_cls_logger
 
 __version__ = "0.3.0"
+
 
 class ClickHouseConnector:
     """Class to connect ClickHouse DWH and fetch events."""
@@ -100,9 +100,12 @@ class EventProcessor:
         self.activation = self.events_df[self.events_df["event_name"] == "af_subscribe"]
         self.logger.debug("Make an instance of %s class", self.__class__.__name__)
 
+        self._create_db_if_not_exists()
+
+    def _create_db_if_not_exists(self):
+        """Create SQLite database if not exists."""
         with sql.connect(cfg.DB_FILE, timeout=10) as con:
             db = con.cursor()
-
             try:
                 self.logger.debug("Try to connect sqlite db")
                 db.execute("SELECT id FROM cachetab")
@@ -110,7 +113,165 @@ class EventProcessor:
                 self.logger.debug("Sqlite db not exists, creating it from schema")
                 db.executescript(open(cfg.SCHEMA_FILE, "rt", encoding="utf-8").read())
 
-    def requests_call(self, verb: str, url: str, params=None, **kwargs) -> tuple:
+    def _save_event_to_db(
+        self, event_time: datetime, event_name: str, af_sub1: str
+    ) -> bool:
+        """
+        Save event to cache db.
+        """
+        payload = {
+            "date": datetime.now(),
+            "event_time": event_time,
+            "event_name": event_name,
+            "af_sub1": af_sub1,
+        }
+
+        with sql.connect(cfg.DB_FILE, timeout=10) as con:
+            db = con.cursor()
+            db.execute(
+                "SELECT id FROM cachetab WHERE af_sub1=:af_sub1 AND event_name=:event_name",
+                payload,
+            )
+
+            if len(db.fetchall()) == 0:
+                db.execute(
+                    "INSERT INTO cachetab (date, event_time, event_name, af_sub1)"
+                    "values (:date, :event_time, :event_name, :af_sub1)",
+                    payload,
+                )
+                try:
+                    con.commit()
+                    self.logger.debug(
+                        "New record (%s) inserted in db", payload["af_sub1"]
+                    )
+                    return True
+                except sql.OperationalError as err:
+                    self.logger.error("OOps: Operational Error: %s", err)
+                    return False
+            else:
+                self.logger.warning("Record has already in db, skipping")
+                return False
+
+    def remove_event_from_db(self, af_sub1: str) -> None:
+        """
+        Remove event from cache db.
+        """
+        with sql.connect(cfg.DB_FILE, timeout=10) as con:
+            db = con.cursor()
+            db.execute(
+                "DELETE FROM cachetab WHERE af_sub1=:af_sub1", {"af_sub1": af_sub1}
+            )
+            try:
+                con.commit()
+                self.logger.debug("Record (%s) removed from db", af_sub1)
+            except sql.OperationalError as err:
+                self.logger.error("OOps: Operational Error: %s", err)
+                return
+
+    def _process_new_events(self, events_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Process and save new events to cache db.
+        """
+        new_events_df = pd.DataFrame(columns=events_df.columns)
+        for index, row in events_df.iterrows():
+            if self._save_event_to_db(
+                row["event_time"], row["event_name"], row["af_sub1"]
+            ):
+                new_events_df.loc[len(new_events_df)] = row
+        return new_events_df
+
+    def remove_old_events(self):
+        """
+        Remove old events from cache db.
+        """
+        week_ago = datetime.now() - timedelta(weeks=1)
+        with sql.connect(cfg.DB_FILE, timeout=10) as con:
+            db = con.cursor()
+            db.execute(
+                "DELETE FROM cachetab WHERE event_time < :week_ago",
+                {"week_ago": week_ago},
+            )
+            try:
+                con.commit()
+                self.logger.debug("Old records removed from db")
+            except sql.OperationalError as err:
+                self.logger.error("OOps: Operational Error: %s", err)
+                return
+
+    def process_install_events(self):
+        """
+        Process install events.
+        """
+        self.install = self._process_new_events(self.install)
+        self.install_requests()
+
+    def process_trial_events(self):
+        """
+        Process trial events.
+        """
+        self.trial = self._process_new_events(self.trial)
+        self.trial_requests()
+
+    def process_cancelled_trial_events(self):
+        """
+        Process cancelled trial events.
+        """
+        self.trial_cancelled = self._process_new_events(self.trial_cancelled)
+        self.cancel_trial_requests()
+
+    def process_activation_events(self):
+        """
+        Process activation events.
+        """
+        self.activation = self._process_new_events(self.activation)
+        self.activation_requests()
+
+    def install_requests(self):
+        """
+        Send requests for install events.
+        """
+        self.send_event_requests("install", "install", 1)
+
+    def activation_requests(self):
+        """
+        Send requests for activation events.
+        """
+        self.send_event_requests("activation", "trial_converted", 4)
+
+    def trial_requests(self):
+        """
+        Send requests for trial events.
+        """
+        self.send_event_requests("trial", "trial_started", 2)
+
+    def cancel_trial_requests(self):
+        """
+        Send requests for cancelled trial events.
+        """
+        self.send_event_requests("trial_cancelled", "trial_renewal_cancelled", 6)
+
+    def send_event_requests(self, event_name, event_status, event_number):
+        """
+        Send requests for specified event.
+        """
+        events_df = getattr(self, event_name)
+        if events_df.shape[0] == 0:
+            return
+        url = self.BASE_URL
+        for af_sub1 in events_df["af_sub1"]:
+            params = [
+                ["cnv_id", af_sub1],
+                ["cnv_status", event_status],
+                [f"event{event_number}", 1],
+            ]
+            response, error = self._requests_call("GET", url=url, params=params)
+            if error is not None:
+                self.logger.error(
+                    "Error while transmiting event (%s): %s", af_sub1, error
+                )
+                continue
+
+    def _requests_call(self, verb: str, url: str, params=None, **kwargs) -> tuple:
         """
         Wraping func for requests with errors handling.
 
@@ -176,179 +337,11 @@ class EventProcessor:
 
         return r, error
 
-    # Functon for saving trials to cache db
-    def save_trials_to_db(
-        self, event_time: datetime, event_name: str, af_sub1: str
-    ) -> None:
-        """
-        Save events to cache db.
-        """
-        payload = {
-            "date": datetime.now(),
-            "event_time": event_time,
-            "event_name": event_name,
-            "af_sub1": af_sub1,
-        }
-
-        with sql.connect(cfg.DB_FILE, timeout=10) as con:
-            db = con.cursor()
-            db.execute("SELECT id FROM cachetab WHERE af_sub1=:af_sub1", payload)
-
-            if len(db.fetchall()) == 0:
-                db.execute(
-                    "INSERT INTO cachetab (date, event_time, event_name, af_sub1)"
-                    "values (:date, :event_time, :event_name, :af_sub1)",
-                    payload,
-                )
-                try:
-                    con.commit()
-                    self.logger.debug(
-                        "New record (%s) inserted in db", payload["af_sub1"]
-                    )
-                except sql.OperationalError as err:
-                    self.logger.error("OOps: Operational Error: %s", err)
-                    return
-            else:
-                self.logger.warning("Record has already in db, skipping")
-
-    # Function for removing trials from cache db by af_sub1
-    def remove_trials_from_db(self, af_sub1: str) -> None:
-        """
-        Remove events from cache db.
-        """
-        with sql.connect(cfg.DB_FILE, timeout=10) as con:
-            db = con.cursor()
-            db.execute(
-                "DELETE FROM cachetab WHERE af_sub1=:af_sub1", {"af_sub1": af_sub1}
-            )
-            try:
-                con.commit()
-                self.logger.debug("Record (%s) removed from db", af_sub1)
-            except sql.OperationalError as err:
-                self.logger.error("OOps: Operational Error: %s", err)
-                return
-
-    # Process new trials and save them to db
-    def process_new_trials(self):
-        """
-        Process new trials and save them to db.
-        """
-        if self.trial.shape[0] == 0:
-            return
-        for index, row in self.trial.iterrows():
-            self.save_trials_to_db(row["event_time"], row["event_name"], row["af_sub1"])
-
-    # Process cancelled trials and remove them from db
-    def process_cancelled_trials(self):
-        """
-        Process cancelled trials and remove them from db.
-        """
-        if self.trial_cancelled.shape[0] == 0:
-            return
-        for index, row in self.trial_cancelled.iterrows():
-            self.remove_trials_from_db(row["af_sub1"])
-
-    # Function gets trials from cache db where event_time <= now - 1 hour. Returns pandas DataFrame.
-    def get_trials_from_db(self) -> pd.DataFrame:
-        """
-        Get events from cache db.
-        """
-        with sql.connect(cfg.DB_FILE, timeout=10) as con:
-            db = con.cursor()
-            db.execute(
-                """SELECT date, event_time, event_name, af_sub1 FROM cachetab
-                WHERE event_name = 'af_start_trial' AND event_time <= datetime('now', '-1 hour')"""
-            )
-            return pd.DataFrame(
-                db.fetchall(), columns=["date", "event_time", "event_name", "af_sub1"]
-            )
-
-    def install_requests(self):
-        """
-        Send requests for install events.
-        """
-        if self.install.shape[0] == 0:
-            return
-        url = self.BASE_URL
-        for af_sub1 in self.install["af_sub1"]:
-            params = [
-                ["cnv_id", af_sub1],
-                ["cnv_status", "install"],
-                ["event1", 1],
-            ]
-            response, error = self.requests_call("GET", url=url, params=params)
-
-    # Function confirmed_trial_requests for sending requests for trial events.
-    # Gets DataFrame from get_trials_from_db then sends GET requests and then
-    # deletes from db processed trials.
-    def confirmed_trial_requests(self):
-        """
-        Send requests for trial events.
-        """
-        df = self.get_trials_from_db()
-        if df.empty:
-            return
-        url = self.BASE_URL
-        for af_sub1 in df["af_sub1"]:
-            params = [
-                ["cnv_id", af_sub1],
-                ["cnv_status", "trial_started"],
-                ["event2", 1],
-            ]
-            response, error = self.requests_call("GET", url=url, params=params)
-            if error is not None:
-                self.logger.error("Error: %s", error)
-                continue
-            self.logger.debug("Request sent: %s", response)
-            self.remove_trials_from_db(af_sub1)
-
-    def trial_requests(self):
-        """
-        Send requests for trial events.
-        """
-        if self.trial.shape[0] == 0:
-            return
-        url = self.BASE_URL
-        for af_sub1 in self.trial["af_sub1"]:
-            params = [
-                ["cnv_id", af_sub1],
-                ["cnv_status", "trial_started"],
-                ["event2", 1],
-            ]
-            response, error = self.requests_call("GET", url=url, params=params)
-
-    def activation_requests(self):
-        """
-        Send requests for activation events.
-        """
-        if self.activation.shape[0] == 0:
-            return
-        url = self.BASE_URL
-        for af_sub1 in self.activation["af_sub1"]:
-            params = [
-                ["cnv_id", af_sub1],
-                ["cnv_status", "trial_converted"],
-                ["event4", 1],
-            ]
-            response, error = self.requests_call("GET", url=url, params=params)
-
-    def cancel_trial_requests(self):
-        """
-        Send requests for cancelled trial events.
-        """
-        if self.trial_cancelled.shape[0] == 0:
-            return
-        url = self.BASE_URL
-        for af_sub1 in self.trial_cancelled["af_sub1"]:
-            params = [
-                ["cnv_id", af_sub1],
-                ["cnv_status", "trial_renewal_cancelled"],
-                ["event6", 1],
-            ]
-            response, error = self.requests_call("GET", url=url, params=params)
-
 
 def main():
+    """
+    Main function.
+    """
     dwh = ClickHouseConnector(
         host=cfg.CLICKHOUSE_HOST,
         user=cfg.CLICKHOUSE_USER,
@@ -363,14 +356,12 @@ def main():
     if not df.empty:
         evs = EventProcessor(events=df)
 
-        evs.install_requests()
-        evs.activation_requests()
-        evs.trial_requests()
-        evs.cancel_trial_requests()
+        evs.process_install_events()
+        evs.process_activation_events()
+        evs.process_trial_events()
+        evs.process_cancelled_trial_events()
 
-        # evs.process_new_trials()
-        # evs.process_cancelled_trials()
-        # evs.confirmed_trial_requests()
+        evs.remove_old_events()
 
 
 if __name__ == "__main__":
