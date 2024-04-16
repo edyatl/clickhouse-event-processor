@@ -149,7 +149,7 @@ class EventProcessor:
                     self.logger.error("OOps: Operational Error: %s", err)
                     return False
             else:
-                self.logger.warning("Record has already in db, skipping")
+                self.logger.debug("Record has already in db, skipping")
                 return False
 
     def remove_event_from_db(self, af_sub1: str) -> None:
